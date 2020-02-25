@@ -1,6 +1,7 @@
 # 计算机网络
 
 <!-- GFM-TOC -->
+
 * 传输层：TCP和UDP
     * [什么是三次握手？](#什么是三次握手-three-way-handshake)
     * [什么是四次挥手？](#什么是四次挥手)
@@ -27,17 +28,38 @@
 
 ------
 
-### 什么是三次握手 (three-way handshake)？
+#### 前言
+
+1. TCP标志位：TCP在其协议头中使用大量的标志位或者说1位（bit）布尔域来控制连接状态，一个包中有可以设置多个标志位。TCP是主机对主机层的传输控制协议，提供可靠的连接服务，采用三次握手确认建立一个连接：
+
+   位码即TCP标志位，有6种标示：SYN(synchronous建立联机) ACK(acknowledgement 确认) PSH(push传送) FIN(finish结束) RST(reset重置) URG(urgent紧急)Sequence number(序列号码) Acknowledge number(确认号码)
+   我们常用的是以下三个标志位：
+
+   - SYN - 创建一个连接
+   - FIN - 终结一个连接
+   - ACK - 确认接收到的数据
+
+2. 握手过程
+
+   所谓三次握手(Three-way Handshake)，是指建立一个TCP连接时，需要客户端和服务器总共发送3个包。
+
+   三次握手的目的是连接服务器指定端口，建立TCP连接,并同步连接双方的序列号和确认号并交换 TCP 窗口大小信息。在socket编程中，客户端执行`connect()`时。将触发三次握手。
+
+   + 第一次握手：建立连接时，客户端发送syn包`(syn=j)`到服务器，并进入`SYN_SEND`状态，等待服务器确认；
+
+   + 第二次握手：服务器收到syn包，必须确认客户的`SYN（ack=j+1）`，同时自己也发送一个SYN包`(syn=k)`，即SYN+ACK包，此时服务器进入SYN_RECV状态；
+
+   + 第三次握手：客户端收到服务器的SYN＋ACK包，向服务器发送确认包ACK(ack=k+1)，此包发送完毕，客户端和服务器进入ESTABLISHED状态，完成三次握手。完成三次握手，客户端与服务器开始传送数据。
+
+### 一、什么是三次握手 (three-way handshake)？
 
 ![三次握手](_v_images/20191129101827556_21212.png)
 
-- 第一次握手：Client将SYN置1，随机产生一个初始序列号seq发送给Server，进入SYN_SENT状态；
+- 第一次握手：Client将SYN（同步序列编号）置1，随机产生一个初始序列号seq发送给Server，进入SYN_SENT状态；
 - 第二次握手：Server收到Client的SYN=1之后，知道客户端请求建立连接，将自己的SYN置1，ACK置1，产生一个acknowledge number=sequence number+1，并随机产生一个自己的初始序列号，发送给客户端；进入SYN_RCVD状态；
 - 第三次握手：客户端检查acknowledge number是否为序列号+1，ACK是否为1，检查正确之后将自己的ACK置为1，产生一个acknowledge number=服务器发的序列号+1，发送给服务器；进入ESTABLISHED状态；服务器检查ACK为1和acknowledge number为序列号+1之后，也进入ESTABLISHED状态；完成三次握手，连接建立。
 
 ##### TCP建立连接可以两次握手吗？为什么?
-<details>
-<summary>展开</summary>
 
 不可以。可能会出现以下情况：**已失效的连接请求报文段又传到了服务器端**。
 
