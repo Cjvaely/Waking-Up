@@ -83,7 +83,7 @@ MySQL 中提供了两种封锁粒度：**行级锁**以及**表级锁**。
 <details>
 <summary>MySQL加锁</summary>
 
-```
+```sql
 SELECT ... LOCK In SHARE MODE;
 SELECT ... FOR UPDATE;
 ```

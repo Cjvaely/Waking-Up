@@ -30,11 +30,291 @@
 - 进程是拥有系统资源的一个独立单位，而线程自己基本上不拥有系统资源，只拥有一点在运行中必不可少的资源(如程序计数器,一组寄存器和栈)，和其他线程共享本进程的相关资源如内存、I/O、cpu等；
 - 在进程切换时，涉及到整个当前进程CPU环境的保存环境的设置以及新被调度运行的CPU环境的设置，而线程切换只需保存和设置少量的寄存器的内容，并不涉及存储器管理方面的操作，可见，进程切换的开销远大于线程切换的开销；
 - 线程之间的通信更方便，同一进程下的线程共享全局变量等数据，而进程之间的通信需要以进程间通信(IPC)的方式进行；
-- 多线程程序只要有一个线程崩溃，整个程序就崩溃了，但多进程程序中一个进程崩溃并不会对其它进程造成影响，因为进程有自己的独立地址空间，因此多进程更加健壮
+- 多线程程序只要有一个线程崩溃，整个程序就崩溃了，但多进程程序中一个进程崩溃并不会对其它进程造成影响，因为进程有自己的独立地址空间，因此多进程更加健壮。
 
 进程操作代码实现，可以参考：[多进程 - 廖雪峰的官方网站](https://www.liaoxuefeng.com/wiki/1016959663602400/1017628290184064)
 
+> 1. 子进程
+
+```python
+"""fork()创建子进程"""
+import os
+
+print('Process (%s) start...' % os.getpid())
+# Only works on Unix/Linux/Mac:
+pid = os.fork()
+if pid == 0:
+    print('I am child process (%s) and my parent is %s.' % (os.getpid(), os.getppid()))
+else:
+    print('I (%s) just created a child process (%s).' % (os.getpid(), pid))
+```
+
+```python
+"""multiprocessing模块就是跨平台版本的多进程模块。"""
+from multiprocessing import Process
+import os
+
+# 子进程要执行的代码
+def run_proc(name):
+    print('Run child process %s (%s)...' % (name, os.getpid()))
+
+if __name__=='__main__':
+    print('Parent process %s.' % os.getpid())
+    # 一个Process类来代表一个进程对象
+    p = Process(target=run_proc, args=('test',))
+    print('Child process will start.')
+    p.start()
+    p.join()
+    print('Child process end.')
+```
+
+```python
+"""用进程池的方式批量创建子进程"""
+from multiprocessing import Pool
+import os, time, random
+
+def long_time_task(name):
+    print('Run task %s (%s)...' % (name, os.getpid()))
+    start = time.time()
+    time.sleep(random.random() * 3)
+    end = time.time()
+    print('Task %s runs %0.2f seconds.' % (name, (end - start)))
+
+if __name__=='__main__':
+    print('Parent process %s.' % os.getpid())
+    p = Pool(6)
+    for i in range(7):
+        p.apply_async(long_time_task, args=(i,))
+    print('Waiting for all subprocesses done...')
+    p.close()
+    # 对Pool对象调用join()方法会等待所有子进程执行完毕
+    p.join()
+    print('All subprocesses done.')
+```
+
+```python
+"""subprocess模块可以让我们非常方便地启动一个子进程，然后控制其输入和输出。"""
+import subprocess
+
+"""
+在Python代码中运行命令nslookup www.python.org
+
+"""
+print('$ nslookup www.python.org')
+r = subprocess.call(['nslookup', 'www.python.org'])
+print('Exit code:', r)
+
+"""子进程还需要输入，则可以通过communicate()方法输入"""
+print('$ nslookup')
+p = subprocess.Popen(['nslookup'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+output, err = p.communicate(b'set q=mx\npython.org\nexit\n')
+print(output.decode('utf-8'))
+print('Exit code:', p.returncode)
+```
+
+> 2. 进程间通信
+
+```python
+"""通过Queue通信"""
+from multiprocessing import Process, Queue
+import os, time, random
+
+# 写数据进程执行的代码:
+def write(q):
+    print('Process to write: %s' % os.getpid())
+    for value in ['A', 'B', 'C']:
+        print('Put %s to queue...' % value)
+        q.put(value)
+        time.sleep(random.random())
+
+# 读数据进程执行的代码:
+def read(q):
+    print('Process to read: %s' % os.getpid())
+    while True:
+        value = q.get(True)
+        print('Get %s from queue.' % value)
+
+if __name__=='__main__':
+    # 父进程创建Queue，并传给各个子进程：
+    q = Queue()
+    pw = Process(target=write, args=(q,))
+    pr = Process(target=read, args=(q,))
+    # 启动子进程pw，写入:
+    pw.start()
+    # 启动子进程pr，读取:
+    pr.start()
+    # 等待pw结束:
+    pw.join()
+    # pr进程里是死循环，无法等待其结束，只能强行终止:
+    pr.terminate()
+```
+
+线程操作代码实现，可以参考：[多线程 - 廖雪峰的官方网站](https://www.liaoxuefeng.com/wiki/1016959663602400/1017629247922688)
+
+> 1. 创建线程
+
+```python
+"""Thread模块"""
+import time, threading
+
+# 新线程执行的代码:
+def loop():
+    print('thread %s is running...' % threading.current_thread().name)
+    n = 0
+    while n < 5:
+        n = n + 1
+        print('thread %s >>> %s' % (threading.current_thread().name, n))
+        time.sleep(1)
+    print('thread %s ended.' % threading.current_thread().name)
+
+"""
+任何进程默认就会启动一个线程，我们把该线程称为主线程主线程又可以启动新的线程，
+Python的threading模块有个current_thread()函数，它永远返回当前线程的实例
+"""
+# 主线程实例的名字叫MainThread
+print('thread %s is running...' % threading.current_thread().name)
+# 子线程的名字在创建时指定，我们用LoopThread命名子线程
+t = threading.Thread(target=loop, name='LoopThread')
+t.start()
+t.join()
+print('thread %s ended.' % threading.current_thread().name)
+```
+
+>2. Lock(线程锁)
+>
+>   多线程中，所有变量都由所有线程共享，线程之间共享数据最大的危险在于多个线程同时改一个变量，把内容给改乱了。
+
+```python
+"""
+改乱内容：
+由于线程的调度是由操作系统决定的，
+当t1、t2交替执行时，只要循环次数足够多，balance的结果就不一定是0了
+"""
+import time, threading
+
+# 假定这是你的银行存款:
+balance = 0
+
+def change_it(n):
+    # 先存后取，结果应该为0:
+    global balance
+    balance = balance + n
+    balance = balance - n
+
+def run_thread(n):
+    for i in range(100000):
+        change_it(n)
+
+t1 = threading.Thread(target=run_thread, args=(5,))
+t2 = threading.Thread(target=run_thread, args=(8,))
+t1.start()
+t2.start()
+t1.join()
+t2.join()
+print(balance)
+```
+
+> 高级语言的一条语句在CPU执行时是若干条语句，即使一个简单的计算：
+>
+> ```python
+> balance = balance + n
+> ```
+>
+> 也分两步：
+>
+> 1. 计算`balance + n`，存入临时变量中；
+> 2. 将临时变量的值赋给`balance`。
+>
+> 也就是可以看成：
+>
+> ```python
+> x = balance + n
+> balance = x
+> ```
+>
+> 究其原因，是因为修改`balance`需要多条语句，而执行这几条语句时，线程可能中断，从而导致多个线程把同一个对象的内容改乱了。
+>
+> 如果我们要确保`balance`计算正确，就要给`change_it()`上一把锁，创建一个锁就是通过`threading.Lock()`来实现：
+>
+> ```python
+> import time, threading
+> 
+> balance = 0
+> lock = threading.Lock()
+> 
+> def change_it(n):
+>     # 先存后取，结果应该为0:
+>     global balance
+>     balance = balance + n
+>     balance = balance - n
+> 
+> def run_thread(n):
+>     for i in range(100000):
+>         # 先要获取锁:
+>         lock.acquire()
+>         try:
+>             # 放心地改吧:
+>             change_it(n)
+>         finally:
+>             # 改完了一定要释放锁:
+>             lock.release()
+> 
+> t1 = threading.Thread(target=run_thread, args=(5,))
+> t2 = threading.Thread(target=run_thread, args=(8,))
+> t1.start()
+> t2.start()
+> t1.join()
+> t2.join()
+> print(balance)
+> ```
+>
+> 锁的好处：确保了某段关键代码只能由一个线程从头到尾完整地执行；
+>
+> 锁的坏处：阻止了多线程并发执行，可能会造成死锁。
+
+> 3. 多核CPU
+>
+>    由于Python解释器有一个GIL锁：Global Interpreter Lock，任何Python线程执行前，必须先获得GIL锁，然后，每执行100条字节码，解释器就自动释放GIL锁，让别的线程有机会执行。这个GIL全局锁实际上把所有线程的执行代码都给上了锁。
+>
+>    在Python中，可以使用多线程，但不要指望能有效利用多核。如果一定要通过多线程利用多核，那只能通过C扩展来实现，不过这样就失去了Python简单易用的特点。
+>
+>    Python虽然不能利用多线程实现多核任务，但可以通过多进程实现多核任务。多个Python进程有各自独立的GIL锁，互不影响。
+
+> 4. ThreadLocal
+>
+>    一个线程使用自己的局部变量比使用全局变量好，因为局部变量只有线程自己能看见，不会影响其他线程，而全局变量的修改必须加锁。局部变量也有问题，就是在函数调用的时候，传递起来很麻烦。
+>
+>    ```python
+>    import threading
+>        
+>    # 创建全局ThreadLocal对象:
+>    local_school = threading.local()
+>    
+>    def process_student():
+>        # 获取当前线程关联的student:
+>        std = local_school.student
+>        print('Hello, %s (in %s)' % (std, threading.current_thread().name))
+>    
+>    def process_thread(name):
+>        # 绑定ThreadLocal的student:
+>    		# 把name（Alice/Bob）传给线程执行函数，process_student()函数可以直接读取name。
+>        local_school.student = name
+>        process_student()
+>    
+>    t1 = threading.Thread(target= process_thread, args=('Alice',), name='Thread-A')
+>    t2 = threading.Thread(target= process_thread, args=('Bob',), name='Thread-B')
+>    t1.start()
+>    t2.start()
+>    t1.join()
+>    t2.join()
+>    ```
+>
+>    可以理解为全局变量`local_school`是一个`dict`，不但可以用`local_school.student`，还可以绑定其他变量，如`local_school.teacher`等等。
+>
+>    `ThreadLocal`最常用的地方就是为每个线程绑定一个数据库连接，HTTP请求，用户身份信息等，这样一个线程的所有调用到的处理函数都可以非常方便地访问这些资源。
+
 ##### 同一进程中的线程可以共享哪些数据？
+
 <details>
 <summary>展开</summary>
 
@@ -66,17 +346,130 @@
 - 管道是半双工的，数据只能向一个方向流动；需要双方通信时，需要建立起两个管道；
 - 一个进程向管道中写的内容被管道另一端的进程读出。写入的内容每次都添加在管道缓冲区的末尾，并且每次都是从缓冲区的头部读出数据；
 - 只能用于父子进程或者兄弟进程之间(具有亲缘关系的进程)
+- 在内核中申请一块固定大小的缓冲区，程序拥有写入和读取的权利
+- 一般使用fork函数实现父子进程的通信。
+
 </details>
 
-2. 命名管道
+2. 命名管道：在内核中申请一块固定大小的缓冲区，程序拥有写入和读取的权利，没有血缘关系的进程也可以进程间通信。
 3. 消息队列
-4. 信号(Signal)
+<details>
+<summary>展开</summary>
++ 内核中创建一队列，队列中每个元素是一个数据报，不同的进程可以通过句柄去访问这个队列。
++ 消息队列提供了⼀个从⼀个进程向另外⼀个进程发送⼀块数据的⽅法。
++ 每个数据块都被认为是有⼀个类型，接收者进程接收的数据块可以有不同的类型值 。
++ 消息队列也有管道⼀样的不⾜，就是每个消息的最⼤⻓度是有上限的（MSGMAX）。
++ 消息队列可实现双向通信。
+
+</details>
+
+4. 信号(Signal)：信号是一种比较复杂的通信方式，用于通知接收进程某个事件已经发生。
+
 5. 共享内存
-6. 信号量(Semaphore)：初始化操作、P操作、V操作；P操作：信号量-1，检测是否小于0，小于则进程进入阻塞状态；V操作：信号量+1，若小于等于0，则从队列中唤醒一个等待的进程进入就绪态
+
+   将同一块物理内存一块映射到不同的进程的虚拟地址空间中，实现不同进程间对同一资源的共享。共享内存可以说是最有用的进程间通信方式，也是最快的IPC形式。
+
+6. 信号量(Semaphore)：
+
+   + 内核中创建一个信号量集合（本质是个数组），数组的元素（信号量）都是1。
+   + 初始化操作、P操作、V操作。
+   + P操作：信号量-1，检测是否小于0，小于则进程进入阻塞状态；V操作：信号量+1，若小于等于0，则从队列中唤醒一个等待的进程进入就绪态。
+   + **PV操作用于同一进程，实现互斥。PV操作用于不同进程，实现同步。**
 
 ![https://blog.csdn.net/sweetyoyy/article/details/77926871](_v_images/20191202162008435_14938.png)
 
-7. 套接字(Socket)
+7. 套接字(Socket)：与其他通信机制不同的是，它可用于不同机器间的进程通信。
+
+   > [Socket通信-客户端](https://github.com/michaelliao/learn-python3/blob/master/samples/socket/do_tcp.py)
+   >
+   > ```python
+   > #!/usr/bin/env python3
+   > # -*- coding: utf-8 -*-
+   > 
+   > import socket
+   > 
+   > # 创建一个socket:
+   > # AF_INET指定使用IPv4协议, IPv6指定为AF_INET6
+   > # SOCK_STREAM指定使用面向流的TCP协议
+   > s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+   > 
+   > # 建立连接:
+   > # 80端口是Web服务的标准端口
+   > # 注意参数是一个tuple，包含地址和端口号
+   > s.connect(('www.sina.com.cn', 80))
+   > 
+   > # 发送数据:
+   > # 向新浪服务器发送请求，要求返回首页的内容
+   > s.send(b'GET / HTTP/1.1\r\nHost: www.sina.com.cn\r\nConnection: close\r\n\r\n')
+   > 
+   > # 接收数据:
+   > buffer = []
+   > while True:
+   >     # 每次最多接收1k字节:
+   >     d = s.recv(1024)
+   >     if d:
+   >         buffer.append(d)
+   >     else:
+   >         break
+   > 
+   > data = b''.join(buffer)
+   > 
+   > # 关闭连接:
+   > s.close()
+   > 
+   > header, html = data.split(b'\r\n\r\n', 1)
+   > print(header.decode('utf-8'))
+   > 
+   > # 把接收的数据写入文件:
+   > with open('sina.html', 'wb') as f:
+   >     f.write(html)
+   > ```
+   >
+   > [Socket通信-服务端](https://www.liaoxuefeng.com/wiki/1016959663602400/1017788916649408)
+   >
+   > ```python
+   > #!/usr/bin/env python3
+   > # -*- coding: utf-8 -*-
+   > 
+   > import socket
+   > 
+   > # 1. 创建Socket
+   > s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+   > 
+   > # 2. 绑定端口
+   > s.bind(('127.0.0.1', 9999))
+   > 
+   > # 3. 监听端口
+   > # 指定等待连接的最大数量：5
+   > s.listen(5)
+   > print('Waiting for connection...')
+   > 
+   > # 永久循环来接受来自客户端的连接，accept()会等待并返回一个客户端的连接:
+   > while True:
+   >     # 接受一个新连接:
+   >     sock, addr = s.accept()
+   >     # 创建新线程来处理TCP连接:
+   >     t = threading.Thread(target=tcplink, args=(sock, addr))
+   >     t.start()
+   > 
+   > """
+   > 每个连接都必须创建新线程（或进程）来处理，
+   > 否则，单线程在处理连接的过程中，无法接受其他客户端的连接：
+   > """
+   > def tcplink(sock, addr):
+   >     print('Accept new connection from %s:%s...' % addr)
+   >     sock.send(b'Welcome!')
+   >     while True:
+   >         data = sock.recv(1024)
+   >         time.sleep(1)
+   >         if not data or data.decode('utf-8') == 'exit':
+   >             break
+   >         sock.send(('Hello, %s!' % data.decode('utf-8')).encode('utf-8'))
+   >     sock.close()
+   >     print('Connection from %s:%s closed.' % addr)
+   > ```
+   >
+   > 
 
 ### 进程同步问题
 
@@ -150,7 +543,6 @@ wait操作：执行wait操作的进程进入条件变量链末尾，唤醒紧急
 ##### 临界区的概念？
 <details>
 <summary>展开</summary>
-
 各个进程中对临界资源（互斥资源/共享变量，一次只能给一个进程使用）进行操作的程序片段
 </details>
 
@@ -214,7 +606,6 @@ wait操作：执行wait操作的进程进入条件变量链末尾，唤醒紧急
 
 <details>
 <summary>最高响应比优先 Highest Response Ratio Next（HRRN）</summary>
-
 响应比 = 1+ 等待时间/处理时间。同时考虑了等待时间的长短和估计需要的执行时间长短，很好的平衡了长短进程。非抢占，吞吐量高，开销可能较大，提供好的响应时间，无饥饿问题。
 </details>
 
@@ -268,7 +659,6 @@ wait操作：执行wait操作的进程进入条件变量链末尾，唤醒紧急
 ##### 什么是孤儿进程？
 <details>
 <summary>展开</summary>
-
 一个父进程已经结束了，但是它的子进程还在运行，那么这些子进程将成为孤儿进程。孤儿进程会被Init（进程ID为1）接管，当这些孤儿进程结束时由Init完成状态收集工作。
 </details>
 
@@ -284,7 +674,6 @@ wait操作：执行wait操作的进程进入条件变量链末尾，唤醒紧急
 ##### 互斥量和临界区有什么区别？
 <details>
 <summary>展开</summary>
-
 互斥量是可以命名的，可以用于不同进程之间的同步；而临界区只能用于同一进程中线程的同步。创建互斥量需要的资源更多，因此临界区的优势是速度快，节省资源。
 </details>
 
@@ -428,7 +817,7 @@ IO多路复用（IO Multiplexing）是指单个进程/线程就可以同时处�
 - 目的不同：分页的目的是管理内存，用于虚拟内存以获得更大的地址空间；分段的目的是满足用户的需要，使程序和数据可以被划分为逻辑上独立的地址空间；
 - 大小不同：段的大小不固定，由其所完成的功能决定；页的大小固定，由系统决定；
 - 地址空间维度不同：分段是二维地址空间（段号+段内偏移），分页是一维地址空间（每个进程一个页表/多级页表，通过一个逻辑地址就能找到对应的物理地址）；
-- 分段便于信息的保护和共享；分页的共享收到限制；
+- 分段便于信息的保护和共享；分页的共享受到限制；
 - 碎片：分段没有内碎片，但会产生外碎片；分页没有外碎片，但会产生内碎片（一个页填不满）
 
 ### 什么是虚拟内存？
